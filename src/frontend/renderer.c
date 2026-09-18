@@ -393,6 +393,15 @@ bool txp_renderer_page_bounds(fz_context *ctx,
 
   return 1;
 }
+
+float txp_renderer_page_y(fz_context *ctx, txp_renderer *self, int page)
+{
+  if (page < 0 || page >= self->page_count || !self->page_y)
+    return 0.0f;
+
+  return self->page_y[page];
+}
+
 bool txp_renderer_page_position(fz_context *ctx,
                                 txp_renderer *self,
                                 SDL_FRect *prect,

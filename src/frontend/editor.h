@@ -67,74 +67,93 @@ struct editor_change
 struct editor_command
 {
   enum EDITOR_COMMAND tag;
-  union {
-    struct {
+  union
+  {
+    struct
+    {
       const char *path;
       const char *data;
       int length;
       bool base64;
     } open;
 
-    struct {
+    struct
+    {
       const char *path;
     } close;
 
     struct editor_change change;
 
-    struct {
+    struct
+    {
       float bg[3], fg[3];
     } theme;
 
-    struct {
+    struct
+    {
     } previous_page;
 
-    struct {
+    struct
+    {
     } next_page;
 
-    struct {
+    struct
+    {
       float x, y, w, h;
     } move_window;
 
-    struct {
+    struct
+    {
     } rescan;
 
-    struct {
+    struct
+    {
       bool status;
     } stay_on_top;
 
-    struct {
+    struct
+    {
       const char *path;
       int line;
+      float vertical_fraction;
     } synctex_forward;
-
-    struct {
+    struct
+    {
       float x, y, w, h;
     } map_window;
 
-    struct {
+    struct
+    {
     } unmap_window;
 
-    struct {
+    struct
+    {
     } crop;
 
-    struct {
+    struct
+    {
     } invert;
 
-    struct {
+    struct
+    {
       const char *path;
     } reg;
 
-    struct {
+    struct
+    {
     } pause;
 
-    struct {
+    struct
+    {
     } resume;
 
-    struct {
+    struct
+    {
       bool status;
     } rerun;
 
-    struct {
+    struct
+    {
     } rerun_once;
   };
 };
@@ -148,14 +167,18 @@ bool editor_parse(fz_context *ctx,
 
 enum EDITOR_INFO_BUFFER
 {
-  BUF_OUT, // TeX process stdout
-  BUF_LOG, // TeX output log file
+  BUF_OUT,  // TeX process stdout
+  BUF_LOG,  // TeX output log file
 };
 
 void editor_append(enum EDITOR_INFO_BUFFER name, fz_buffer *buf, int pos);
 void editor_truncate(enum EDITOR_INFO_BUFFER name, fz_buffer *buf);
 void editor_flush(void);
-void editor_synctex(const char *dirname, const char *basename, int basename_len, int line, int column);
+void editor_synctex(const char *dirname,
+                    const char *basename,
+                    int basename_len,
+                    int line,
+                    int column);
 void editor_reset_sync(void);
 void editor_notify_file_opened(int index, const char *path, int len);
 

@@ -54,7 +54,7 @@ void txp_renderer_set_pages(fz_context *ctx,
                             txp_renderer *self,
                             fz_display_list **pages,
                             int page_count);
-
+float txp_renderer_page_y(fz_context *ctx, txp_renderer *self, int page);
 fz_display_list *txp_renderer_get_contents(fz_context *ctx, txp_renderer *self);
 
 txp_renderer_config *txp_renderer_get_config(fz_context *ctx,

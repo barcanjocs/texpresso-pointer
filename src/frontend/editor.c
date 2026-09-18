@@ -83,7 +83,8 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "close") == 0)
   {
-    if (len != 2) goto arity;
+    if (len != 2)
+      goto arity;
     val path = val_array_get(ctx, stack, command, 1);
     if (!val_is_string(path))
       goto arguments;
@@ -98,15 +99,14 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "change") == 0)
   {
-    if (len != 5) goto arity;
+    if (len != 5)
+      goto arity;
     val path = val_array_get(ctx, stack, command, 1);
     val offset = val_array_get(ctx, stack, command, 2);
     val length = val_array_get(ctx, stack, command, 3);
     val data = val_array_get(ctx, stack, command, 4);
-    if (!val_is_string(path) ||
-        !val_is_number(offset) ||
-        !val_is_number(length) ||
-        !val_is_string(data))
+    if (!val_is_string(path) || !val_is_number(offset) ||
+        !val_is_number(length) || !val_is_string(data))
       goto arguments;
     *out = (struct editor_command){
         .tag = EDIT_CHANGE,
@@ -126,15 +126,14 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "change-lines") == 0)
   {
-    if (len != 5) goto arity;
+    if (len != 5)
+      goto arity;
     val path = val_array_get(ctx, stack, command, 1);
     val offset = val_array_get(ctx, stack, command, 2);
     val count = val_array_get(ctx, stack, command, 3);
     val data = val_array_get(ctx, stack, command, 4);
-    if (!val_is_string(path) ||
-        !val_is_number(offset) ||
-        !val_is_number(count) ||
-        !val_is_string(data))
+    if (!val_is_string(path) || !val_is_number(offset) ||
+        !val_is_number(count) || !val_is_string(data))
       goto arguments;
     *out = (struct editor_command){
         .tag = EDIT_CHANGE,
@@ -209,7 +208,8 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "move-window") == 0)
   {
-    if (len != 5) goto arity;
+    if (len != 5)
+      goto arity;
     *out = (struct editor_command){
         .tag = EDIT_MOVE_WINDOW,
         .move_window = {
@@ -227,7 +227,8 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "map-window") == 0)
   {
-    if (len != 5) goto arity;
+    if (len != 5)
+      goto arity;
     *out = (struct editor_command){
         .tag = EDIT_MAP_WINDOW,
         .map_window = {
@@ -241,7 +242,8 @@ bool editor_parse(fz_context *ctx,
   {
     if (len != 1)
       goto arity;
-    *out = (struct editor_command){.tag = EDIT_UNMAP_WINDOW, .unmap_window = {}};
+    *out =
+        (struct editor_command){.tag = EDIT_UNMAP_WINDOW, .unmap_window = {}};
   }
   else if (strcmp(verb, "stay-on-top") == 0)
   {
@@ -254,18 +256,40 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "synctex-forward") == 0)
   {
-    if (len != 3)
+    if (len != 3 && len != 4)
       goto arity;
+
     val path = val_array_get(ctx, stack, command, 1);
     val line = val_array_get(ctx, stack, command, 2);
+
     if (!val_is_string(path) || !val_is_number(line))
       goto arguments;
+
+    float vertical_fraction = 0.5f;
+
+    if (len == 4)
+    {
+      val fraction = val_array_get(ctx, stack, command, 3);
+
+      if (!val_is_number(fraction))
+        goto arguments;
+
+      vertical_fraction = val_number(ctx, fraction);
+
+      if (vertical_fraction < 0.0f)
+        vertical_fraction = 0.0f;
+
+      if (vertical_fraction > 1.0f)
+        vertical_fraction = 1.0f;
+    }
+
     *out = (struct editor_command){
         .tag = EDIT_SYNCTEX_FORWARD,
         .synctex_forward =
             {
                 .path = val_string(ctx, stack, path),
                 .line = val_number(ctx, line),
+                .vertical_fraction = vertical_fraction,
             },
     };
   }
@@ -290,7 +314,7 @@ bool editor_parse(fz_context *ctx,
       goto arguments;
     *out = (struct editor_command){
         .tag = EDIT_REGISTER,
-        .reg = { .path = val_string(ctx, stack, path) },
+        .reg = {.path = val_string(ctx, stack, path)},
     };
   }
   else if (strcmp(verb, "pause") == 0)
@@ -311,8 +335,8 @@ bool editor_parse(fz_context *ctx,
       goto arity;
     bool status =
         truth_value(ctx, stack, val_array_get(ctx, stack, command, 1));
-    *out = (struct editor_command){.tag = EDIT_RERUN,
-                                   .rerun = {.status = status}};
+    *out =
+        (struct editor_command){.tag = EDIT_RERUN, .rerun = {.status = status}};
   }
   else if (strcmp(verb, "rerun-once") == 0)
   {
@@ -349,11 +373,21 @@ static void output_json_string(FILE *f, const char *ptr, int len)
       {
         switch (c)
         {
-          case '\b': c = 'b'; break;
-          case '\f': c = 'f'; break;
-          case '\n': c = 'n'; break;
-          case '\r': c = 'r'; break;
-          case '\t': c = 't'; break;
+          case '\b':
+            c = 'b';
+            break;
+          case '\f':
+            c = 'f';
+            break;
+          case '\n':
+            c = 'n';
+            break;
+          case '\r':
+            c = 'r';
+            break;
+          case '\t':
+            c = 't';
+            break;
           default:
             fprintf(f, "\\u%04X", c);
             continue;
@@ -364,7 +398,9 @@ static void output_json_string(FILE *f, const char *ptr, int len)
       {
         switch (c)
         {
-          case '"': case '\\': case '/':
+          case '"':
+          case '\\':
+          case '/':
             putc_unlocked('\\', f);
             break;
         }
@@ -475,18 +511,24 @@ void editor_append(enum EDITOR_INFO_BUFFER name, fz_buffer *buf, int pos)
   if (line_output)
   {
     int next = pos;
-    while (next < buf->len && buf->data[next] != '\n') next++;
+    while (next < buf->len && buf->data[next] != '\n')
+      next++;
     if (next == buf->len)
       return;
 
     // Find where line begins and ends
-    while (pos > 0 && data[pos - 1] != '\n') pos--;
+    while (pos > 0 && data[pos - 1] != '\n')
+      pos--;
 
     // Header
     switch (protocol)
     {
-      case EDITOR_SEXP: fprintf(stdout, "(append-lines %s", editor_info_buffer(name)); break;
-      case EDITOR_JSON: fprintf(stdout, "[\"append-lines\", \"%s\"", editor_info_buffer(name)); break;
+      case EDITOR_SEXP:
+        fprintf(stdout, "(append-lines %s", editor_info_buffer(name));
+        break;
+      case EDITOR_JSON:
+        fprintf(stdout, "[\"append-lines\", \"%s\"", editor_info_buffer(name));
+        break;
     }
 
     // pos points to the beginning of a line,
@@ -498,17 +540,21 @@ void editor_append(enum EDITOR_INFO_BUFFER name, fz_buffer *buf, int pos)
       output_data_string(stdout, data + pos, next - pos);
       fprintf(stdout, "\"");
       pos = next;
-      do {
+      do
+      {
         next++;
-      }
-      while (next < buf->len && buf->data[next] != '\n');
+      } while (next < buf->len && buf->data[next] != '\n');
     }
 
     // Trailer
     switch (protocol)
     {
-      case EDITOR_SEXP: fprintf(stdout, ")\n"); break;
-      case EDITOR_JSON: fprintf(stdout, "]\n"); break;
+      case EDITOR_SEXP:
+        fprintf(stdout, ")\n");
+        break;
+      case EDITOR_JSON:
+        fprintf(stdout, "]\n");
+        break;
     }
   }
   else
@@ -521,7 +567,8 @@ void editor_append(enum EDITOR_INFO_BUFFER name, fz_buffer *buf, int pos)
         fprintf(stdout, "\")\n");
         break;
       case EDITOR_JSON:
-        fprintf(stdout, "[\"append\", \"%s\", %d, \"", editor_info_buffer(name), pos);
+        fprintf(stdout, "[\"append\", \"%s\", %d, \"", editor_info_buffer(name),
+                pos);
         output_data_string(stdout, data + pos, (int)buf->len - pos);
         fprintf(stdout, "\"]\n");
         break;
@@ -546,10 +593,12 @@ void editor_truncate(enum EDITOR_INFO_BUFFER name, fz_buffer *buf)
   switch (protocol)
   {
     case EDITOR_SEXP:
-      fprintf(stdout, "(truncate%s %s %d)\n", suffix, editor_info_buffer(name), count);
+      fprintf(stdout, "(truncate%s %s %d)\n", suffix, editor_info_buffer(name),
+              count);
       break;
     case EDITOR_JSON:
-      fprintf(stdout, "[\"truncate%s\", \"%s\", %d]\n", suffix, editor_info_buffer(name), count);
+      fprintf(stdout, "[\"truncate%s\", \"%s\", %d]\n", suffix,
+              editor_info_buffer(name), count);
       break;
   }
 }
@@ -576,8 +625,12 @@ void editor_synctex(const char *dirname,
   bool need_dir = basename[0] != '/';
   switch (protocol)
   {
-    case EDITOR_SEXP: fprintf(stdout, "(synctex \""); break;
-    case EDITOR_JSON: fprintf(stdout, "[\"synctex\", \""); break;
+    case EDITOR_SEXP:
+      fprintf(stdout, "(synctex \"");
+      break;
+    case EDITOR_JSON:
+      fprintf(stdout, "[\"synctex\", \"");
+      break;
   }
   if (need_dir)
   {
@@ -587,8 +640,12 @@ void editor_synctex(const char *dirname,
   output_data_string(stdout, (const void *)basename, basename_len);
   switch (protocol)
   {
-    case EDITOR_SEXP: fprintf(stdout, "\" %d %d)\n", line, column); break;
-    case EDITOR_JSON: fprintf(stdout, "\", %d, %d]\n", line, column); break;
+    case EDITOR_SEXP:
+      fprintf(stdout, "\" %d %d)\n", line, column);
+      break;
+    case EDITOR_JSON:
+      fprintf(stdout, "\", %d, %d]\n", line, column);
+      break;
   }
 }
 
@@ -621,8 +678,12 @@ void editor_notify_file_opened(int index, const char *path, int len)
   output_data_string(stdout, path, len);
   switch (protocol)
   {
-    case EDITOR_SEXP: fprintf(stdout, "\")\n"); break;
-    case EDITOR_JSON: fprintf(stdout, "\"]\n"); break;
+    case EDITOR_SEXP:
+      fprintf(stdout, "\")\n");
+      break;
+    case EDITOR_JSON:
+      fprintf(stdout, "\"]\n");
+      break;
   }
 }
 
@@ -662,7 +723,11 @@ void editor_notify_lookup(const char *path,
   output_data_string(stdout, path, len);
   switch (protocol)
   {
-    case EDITOR_SEXP: fprintf(stdout, "\")\n"); break;
-    case EDITOR_JSON: fprintf(stdout, "\"]\n"); break;
+    case EDITOR_SEXP:
+      fprintf(stdout, "\")\n");
+      break;
+    case EDITOR_JSON:
+      fprintf(stdout, "\"]\n");
+      break;
   }
 }

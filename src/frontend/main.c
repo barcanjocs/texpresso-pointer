@@ -119,6 +119,7 @@ typedef struct
   bool scroll_advance;
   int scroll_page_count;
   float target_pan_y;
+  float synctex_vertical_fraction;
   uint64_t last_scroll_ticks;
 
   float scroll_velocity_y;
@@ -1386,6 +1387,8 @@ static void interpret_command(struct persistent_state *ps,
       }
       else
       {
+        ui->synctex_vertical_fraction = cmd.synctex_forward.vertical_fraction;
+
         synctex_set_target(stx, ui->page, path, cmd.synctex_forward.line);
         schedule_event(STDIN_EVENT);
       }
@@ -1734,7 +1737,11 @@ bool texpresso_main(struct persistent_state *ps)
 
         // FIXME: Scroll to point
         float f = send(scale_factor, ui->eng);
-        fz_point p = fz_make_point(f * x, f * y);
+
+        fz_point p = fz_make_point(
+            f * x,
+            f * y + txp_renderer_page_y(ps->ctx, ui->doc_renderer, page));
+
         fz_point pt =
             txp_renderer_document_to_screen(ps->ctx, ui->doc_renderer, p);
         fprintf(stderr,
@@ -1742,21 +1749,21 @@ bool texpresso_main(struct persistent_state *ps)
                 pt.y);
         int w, h;
         txp_renderer_screen_size(ps->ctx, ui->doc_renderer, &w, &h);
-        float margin_lo = h / 4.0;
-        float margin_hi = h / 3.0;
+        float target_y = ui->synctex_vertical_fraction * h;
 
         txp_renderer_config *config =
             txp_renderer_get_config(ps->ctx, ui->doc_renderer);
 
-        float delta = 0.0;
-        if (pt.y < margin_lo)
-          delta = -pt.y + margin_hi;
-        else if (pt.y >= h - margin_lo)
-          delta = h - pt.y - margin_hi;
-        fprintf(stderr, "[synctex forward] pan.y = %.02f + %.02f = %.02f\n",
-                config->pan.y, delta, config->pan.y + delta);
-        config->pan.y += delta;
-        if (delta != 0.0)
+        float delta = target_y - pt.y;
+
+        fprintf(stderr,
+                "[synctex forward] target y = %.02f, point y = %.02f, delta = "
+                "%.02f\n",
+                target_y, pt.y, delta);
+
+        ui->target_pan_y = config->pan.y + delta;
+
+        if (fabsf(delta) > 0.5f)
           schedule_event(RENDER_EVENT);
       }
     }
