@@ -120,6 +120,7 @@ typedef struct
   int scroll_page_count;
 
   float target_pan_y;
+  bool synctex_recentering;
   float synctex_vertical_fraction;
   float synctex_cursor_x;
   float synctex_cursor_y;
@@ -249,6 +250,7 @@ static bool animate_scroll(fz_context *ctx, ui_state *ui)
   if (fabsf(distance) < 0.5f)
   {
     config->pan.y = ui->target_pan_y;
+    ui->synctex_recentering = false;
     return false;
   }
 
@@ -1804,18 +1806,14 @@ bool texpresso_main(struct persistent_state *ps)
                 "[synctex] page=%d p=(%.1f, %.1f) screen=(%.1f, %.1f) "
                 "pan=%.1f target=%.1f h=%d\n",
                 page, p.x, p.y, pt.x, pt.y, config->pan.y, ui->target_pan_y, h);
-        if (pt.y < top_threshold || pt.y > bottom_threshold)
+        if (!ui->synctex_recentering &&
+            (pt.y < top_threshold || pt.y > bottom_threshold))
         {
-          float target_y = h * 0.6f;
+          float target_y = h * 0.4f;
           float delta = target_y - pt.y;
 
-          fprintf(
-              stderr,
-              "[synctex forward] recenter: target y = %.02f, point y = %.02f, "
-              "delta = %.02f\n",
-              target_y, pt.y, delta);
-
           ui->target_pan_y = config->pan.y + delta;
+          ui->synctex_recentering = true;
         }
 
         schedule_event(RENDER_EVENT);
