@@ -256,7 +256,7 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "synctex-forward") == 0)
   {
-    if (len != 3 && len != 4 && len != 5)
+    if (len != 3 && len != 4)
       goto arity;
 
     val path = val_array_get(ctx, stack, command, 1);
@@ -267,7 +267,7 @@ bool editor_parse(fz_context *ctx,
 
     float vertical_fraction = 0.5f;
 
-    if (len == 4 || len == 5)
+    if (len == 4)
     {
       val fraction = val_array_get(ctx, stack, command, 3);
 
@@ -283,18 +283,6 @@ bool editor_parse(fz_context *ctx,
         vertical_fraction = 1.0f;
     }
 
-    bool scroll = false;
-
-    if (len == 5)
-    {
-      val value = val_array_get(ctx, stack, command, 4);
-
-      if (!val_is_bool(value))
-        goto arguments;
-
-      scroll = truth_value(ctx, stack, value);
-    }
-
     *out = (struct editor_command){
         .tag = EDIT_SYNCTEX_FORWARD,
         .synctex_forward =
@@ -302,7 +290,6 @@ bool editor_parse(fz_context *ctx,
                 .path = val_string(ctx, stack, path),
                 .line = val_number(ctx, line),
                 .vertical_fraction = vertical_fraction,
-                .scroll = scroll,
             },
     };
   }
