@@ -118,6 +118,11 @@ typedef struct
   bool advancing;
   bool scroll_advance;
   int scroll_page_count;
+  float target_pan_y;
+  uint64_t last_scroll_ticks;
+
+  float scroll_velocity_y;
+  uint64_t last_wheel_timestamp;
 } ui_state;
 
 /* UI rendering */
@@ -127,12 +132,141 @@ static float zoom_factor(int count)
   return expf((float)count / 5000.0f);
 }
 
+static void maybe_advance_page(fz_context *ctx, ui_state *ui)
+{
+  txp_renderer_bounds bounds;
+
+  if (!txp_renderer_page_bounds(ctx, ui->doc_renderer, &bounds))
+    return;
+
+  float range = bounds.pan_interval.y < 0 ? 0 : bounds.pan_interval.y;
+
+  float lookahead = bounds.window_size.y * 1.5f;
+
+  float velocity = fabsf(ui->scroll_velocity_y);
+
+  if (velocity > 0.0f)
+  {
+    float velocity_lookahead = velocity * 0.5f;
+
+    if (velocity_lookahead > lookahead)
+      lookahead = velocity_lookahead;
+  }
+
+  float threshold = fmaxf(0.0f, range - lookahead);
+
+  if (ui->target_pan_y <= -threshold)
+  {
+    if (!ui->scroll_advance)
+    {
+      ui->scroll_advance = true;
+      ui->scroll_page_count = send(page_count, ui->eng);
+    }
+
+    schedule_event(RENDER_EVENT);
+  }
+}
+
+static bool animate_scroll(fz_context *ctx, ui_state *ui)
+{
+  txp_renderer_config *config = txp_renderer_get_config(ctx, ui->doc_renderer);
+
+  txp_renderer_bounds bounds;
+  if (!txp_renderer_page_bounds(ctx, ui->doc_renderer, &bounds))
+    return false;
+  uint64_t now = SDL_GetTicks64();
+
+  if (ui->scroll_velocity_y != 0.0f)
+  {
+    if (ui->last_scroll_ticks == 0)
+      ui->last_scroll_ticks = now;
+
+    float dt = (float)(now - ui->last_scroll_ticks) / 1000.0f;
+
+    ui->last_scroll_ticks = now;
+
+    if (dt > 0.05f)
+      dt = 0.05f;
+
+    config->pan.y += ui->scroll_velocity_y * dt;
+
+    float range = bounds.pan_interval.y < 0 ? 0 : bounds.pan_interval.y;
+
+    if (config->pan.y < -range)
+    {
+      config->pan.y = -range;
+      ui->scroll_velocity_y = 0.0f;
+    }
+    else if (config->pan.y > range)
+    {
+      config->pan.y = range;
+      ui->scroll_velocity_y = 0.0f;
+    }
+    else
+    {
+      /*
+       * Friction. Lower = stops sooner.
+       */
+      ui->scroll_velocity_y *= expf(-8.0f * dt);
+    }
+
+    ui->target_pan_y = config->pan.y;
+    maybe_advance_page(ctx, ui);
+
+    if (fabsf(ui->scroll_velocity_y) > 1.0f)
+      return true;
+
+    ui->scroll_velocity_y = 0.0f;
+  }
+  float range = bounds.pan_interval.y < 0 ? 0 : bounds.pan_interval.y;
+
+  if (ui->target_pan_y < -range)
+    ui->target_pan_y = -range;
+
+  if (ui->target_pan_y > range)
+    ui->target_pan_y = range;
+
+  if (ui->last_scroll_ticks == 0)
+    ui->last_scroll_ticks = now;
+
+  float dt = (float)(now - ui->last_scroll_ticks) / 1000.0f;
+  ui->last_scroll_ticks = now;
+
+  // Prevent a large jump after the application has been idle.
+  if (dt > 0.05f)
+    dt = 0.05f;
+
+  if (ui->scroll_velocity_y != 0.0f)
+    return true;
+
+  float distance = ui->target_pan_y - config->pan.y;
+
+  if (fabsf(distance) < 0.5f)
+  {
+    config->pan.y = ui->target_pan_y;
+    return false;
+  }
+
+  // Time-based exponential smoothing.
+  float amount = 1.0f - expf(-18.0f * dt);
+
+  config->pan.y += distance * amount;
+  maybe_advance_page(ctx, ui);
+  return true;
+}
 static void render(fz_context *ctx, ui_state *ui)
 {
+  bool scrolling = animate_scroll(ctx, ui);
+
   SDL_SetRenderDrawColor(ui->sdl_renderer, 0, 0, 0, 255);
   SDL_RenderClear(ui->sdl_renderer);
+
   txp_renderer_render(ctx, ui->doc_renderer);
+
   SDL_RenderPresent(ui->sdl_renderer);
+
+  if (scrolling)
+    schedule_event(RENDER_EVENT);
 }
 
 struct repaint_on_resize_env
@@ -189,16 +323,20 @@ static bool need_advance(fz_context *ctx, ui_state *ui)
 static bool advance_engine(fz_context *ctx, ui_state *ui)
 {
   bool need = need_advance(ctx, ui);
+
   if (!need && ui->advancing)
     editor_flush();
+
   ui->advancing = need;
+
   if (!need)
     return false;
 
   struct timespec start;
   clock_gettime(CLOCK_MONOTONIC, &start);
 
-  int steps = 10;
+  int steps = ui->scroll_advance ? 100 : 10;
+
   while (need)
   {
     if (!send(step, ui->eng, ctx, false))
@@ -207,23 +345,49 @@ static bool advance_engine(fz_context *ctx, ui_state *ui)
     steps -= 1;
     need = need_advance(ctx, ui);
 
-    if (steps == 0)
+    /*
+     * While prefetching a page, keep working until the page
+     * actually becomes available.
+     */
+    if (ui->scroll_advance)
     {
-      steps = 10;
-
-      struct timespec curr;
-      clock_gettime(CLOCK_MONOTONIC, &curr);
-
-      int delta = (curr.tv_sec - start.tv_sec) * 1000 * 1000 * 1000 +
-                  (curr.tv_nsec - start.tv_nsec);
-
-      if (delta > 5000000)
+      if (!need)
         break;
+
+      if (steps == 0)
+      {
+        steps = 100;
+
+        struct timespec curr;
+        clock_gettime(CLOCK_MONOTONIC, &curr);
+
+        int delta = (curr.tv_sec - start.tv_sec) * 1000 * 1000 * 1000 +
+                    (curr.tv_nsec - start.tv_nsec);
+
+        if (delta > 100000000)
+          break;
+      }
+    }
+    else
+    {
+      if (steps == 0)
+      {
+        steps = 10;
+
+        struct timespec curr;
+        clock_gettime(CLOCK_MONOTONIC, &curr);
+
+        int delta = (curr.tv_sec - start.tv_sec) * 1000 * 1000 * 1000 +
+                    (curr.tv_nsec - start.tv_nsec);
+
+        if (delta > 5000000)
+          break;
+      }
     }
   }
+
   return need;
 }
-
 static fz_point get_scale_factor(SDL_Window *window)
 {
   int ww, wh, pw, ph;
@@ -375,12 +539,52 @@ static void ui_mouse_wheel(fz_context *ctx,
   else
   {
     (void)timestamp;
-    float x = scale.x * dx * 5;
-    float y = scale.y * dy * 5;
+
+    float x = scale.x * dx * 8;
+    float y = scale.y * dy * 8;
+
     config->pan.x -= x;
     config->pan.y += y;
-    // fprintf(stderr, "wheel pan: (%.02f, %.02f) raw:(%.02f, %.02f)\n", x, y,
-    // dx, dy);
+    ui->target_pan_y = config->pan.y;
+
+    /*
+     * Estimate the current trackpad velocity from the incoming
+     * wheel events. SDL timestamps are in milliseconds.
+     */
+    if (ui->last_wheel_timestamp != 0 && timestamp != ui->last_wheel_timestamp)
+    {
+      float dt = (float)(timestamp - ui->last_wheel_timestamp) / 1000.0f;
+
+      if (dt > 0.001f && dt < 0.1f)
+      {
+        float velocity = y / dt;
+
+        /*
+         * Smooth the velocity estimate so that one noisy event
+         * doesn't create a huge fling.
+         */
+        ui->scroll_velocity_y = ui->scroll_velocity_y * 0.7f + velocity * 0.3f;
+      }
+    }
+
+    ui->last_wheel_timestamp = timestamp;
+
+    txp_renderer_bounds bounds;
+    if (txp_renderer_page_bounds(ctx, ui->doc_renderer, &bounds))
+    {
+      float range = bounds.pan_interval.y < 0 ? 0 : bounds.pan_interval.y;
+
+      if (config->pan.y < -range)
+        config->pan.y = -range;
+
+      if (config->pan.y > range)
+        config->pan.y = range;
+
+      ui->target_pan_y = config->pan.y;
+
+      float advance_threshold = range - bounds.window_size.y * 0.25f;
+    }
+
     schedule_event(RENDER_EVENT);
   }
 }
@@ -536,27 +740,18 @@ static void ui_pan(fz_context *ctx, ui_state *ui, float factor)
     return;
 
   float delta = bounds.window_size.y * scale.y * factor;
-
-  config->pan.y += delta;
-
   float range = bounds.pan_interval.y < 0 ? 0 : bounds.pan_interval.y;
 
-  if (config->pan.y < -range)
-    config->pan.y = -range;
+  ui->target_pan_y += delta;
+  maybe_advance_page(ctx, ui);
 
-  if (config->pan.y > range)
-    config->pan.y = range;
+  if (ui->target_pan_y < -range)
+    ui->target_pan_y = -range;
 
-  /*
-   * Scrolling downward (negative factor) toward the bottom
-   * of the currently generated document should request more
-   * TeX engine output.
-   */
-  if (factor < 0 && config->pan.y <= -range)
-  {
-    ui->scroll_advance = true;
-    ui->scroll_page_count = send(page_count, ui->eng);
-  }
+  if (ui->target_pan_y > range)
+    ui->target_pan_y = range;
+
+  ui->last_scroll_ticks = SDL_GetTicks64();
 
   schedule_event(RENDER_EVENT);
 }
@@ -1005,8 +1200,10 @@ static void display_page(struct persistent_state *ps, ui_state *ui)
       {
         txp_renderer_config *config =
             txp_renderer_get_config(ps->ctx, ui->doc_renderer);
+        float delta = new_bounds.pan_interval.y - old_bounds.pan_interval.y;
 
-        config->pan.y += new_bounds.pan_interval.y - old_bounds.pan_interval.y;
+        config->pan.y += delta;
+        ui->target_pan_y += delta;
       }
     }
   }
@@ -1022,6 +1219,8 @@ static void display_page(struct persistent_state *ps, ui_state *ui)
   {
     fz_rethrow(ps->ctx);
   }
+  ui->scroll_advance = true;
+  ui->scroll_page_count = page_count;
 
   schedule_event(RENDER_EVENT);
 }
