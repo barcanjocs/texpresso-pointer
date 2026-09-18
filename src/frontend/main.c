@@ -1794,22 +1794,31 @@ bool texpresso_main(struct persistent_state *ps)
                 pt.y);
         int w, h;
         txp_renderer_screen_size(ps->ctx, ui->doc_renderer, &w, &h);
-        float target_y = ui->synctex_vertical_fraction * h;
 
         txp_renderer_config *config =
             txp_renderer_get_config(ps->ctx, ui->doc_renderer);
 
-        float delta = target_y - pt.y;
-
+        float top_threshold = h * 0.15f;
+        float bottom_threshold = h * 0.85f;
         fprintf(stderr,
-                "[synctex forward] target y = %.02f, point y = %.02f, delta = "
-                "%.02f\n",
-                target_y, pt.y, delta);
+                "[synctex] page=%d p=(%.1f, %.1f) screen=(%.1f, %.1f) "
+                "pan=%.1f target=%.1f h=%d\n",
+                page, p.x, p.y, pt.x, pt.y, config->pan.y, ui->target_pan_y, h);
+        if (pt.y < top_threshold || pt.y > bottom_threshold)
+        {
+          float target_y = h * 0.6f;
+          float delta = target_y - pt.y;
 
-        ui->target_pan_y = config->pan.y + delta;
+          fprintf(
+              stderr,
+              "[synctex forward] recenter: target y = %.02f, point y = %.02f, "
+              "delta = %.02f\n",
+              target_y, pt.y, delta);
 
-        if (fabsf(delta) > 0.5f)
-          schedule_event(RENDER_EVENT);
+          ui->target_pan_y = config->pan.y + delta;
+        }
+
+        schedule_event(RENDER_EVENT);
       }
     }
 
