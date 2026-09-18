@@ -111,15 +111,19 @@ typedef struct
   int need_synctex;
   int zoom;
 
-  // Mouse input state
+  // mouse input state
   int last_mouse_x, last_mouse_y;
   uint32_t last_click_ticks;
   enum ui_mouse_status mouse_status;
   bool advancing;
   bool scroll_advance;
   int scroll_page_count;
+
   float target_pan_y;
   float synctex_vertical_fraction;
+  float synctex_cursor_x;
+  float synctex_cursor_y;
+  bool synctex_cursor_visible;
   uint64_t last_scroll_ticks;
 
   float scroll_velocity_y;
@@ -263,6 +267,42 @@ static void render(fz_context *ctx, ui_state *ui)
   SDL_RenderClear(ui->sdl_renderer);
 
   txp_renderer_render(ctx, ui->doc_renderer);
+
+  if (ui->synctex_cursor_visible)
+  {
+    fz_point cursor = txp_renderer_document_to_screen(
+        ctx, ui->doc_renderer,
+        fz_make_point(ui->synctex_cursor_x, ui->synctex_cursor_y));
+
+    int screen_w, screen_h;
+    txp_renderer_screen_size(ctx, ui->doc_renderer, &screen_w, &screen_h);
+
+    bool right_column = cursor.x > screen_w / 2.0f;
+
+    SDL_SetRenderDrawColor(ui->sdl_renderer, 230, 40, 40, 255);
+
+    SDL_Vertex vertices[3];
+
+    if (right_column)
+    {
+      // < pointing left
+      vertices[0].position = (SDL_FPoint){screen_w - 36, cursor.y};
+      vertices[1].position = (SDL_FPoint){screen_w - 8, cursor.y - 16};
+      vertices[2].position = (SDL_FPoint){screen_w - 8, cursor.y + 16};
+    }
+    else
+    {
+      // > pointing right
+      vertices[0].position = (SDL_FPoint){36, cursor.y};
+      vertices[1].position = (SDL_FPoint){8, cursor.y - 16};
+      vertices[2].position = (SDL_FPoint){8, cursor.y + 16};
+    }
+
+    for (int i = 0; i < 3; ++i)
+      vertices[i].color = (SDL_Color){230, 40, 40, 255};
+
+    SDL_RenderGeometry(ui->sdl_renderer, NULL, vertices, 3, NULL, 0);
+  }
 
   SDL_RenderPresent(ui->sdl_renderer);
 
@@ -1742,8 +1782,13 @@ bool texpresso_main(struct persistent_state *ps)
             f * x,
             f * y + txp_renderer_page_y(ps->ctx, ui->doc_renderer, page));
 
+        ui->synctex_cursor_x = p.x;
+        ui->synctex_cursor_y = p.y;
+        ui->synctex_cursor_visible = true;
+
         fz_point pt =
             txp_renderer_document_to_screen(ps->ctx, ui->doc_renderer, p);
+
         fprintf(stderr,
                 "[synctex forward] position on screen: (%.02f, %.02f)\n", pt.x,
                 pt.y);
