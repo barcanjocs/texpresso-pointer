@@ -1,7 +1,7 @@
 #ifdef __APPLE__
-# include <sys/syslimits.h>
+#include <sys/syslimits.h>
 #else
-# include <linux/limits.h>
+#include <linux/limits.h>
 #endif
 
 #include <stdio.h>
@@ -10,13 +10,13 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include "../engine/xetex-xetexd.h"
+#include "common.h"
 #include "formats.h"
+#include "providers.h"
 #include "tectonic_bridge_core.h"
 #include "tectonic_bridge_core_generated.h"
-#include "providers.h"
 #include "texpresso_protocol.h"
-#include "common.h"
-#include "../engine/xetex-xetexd.h"
 #define LOG 0
 
 /**
@@ -139,27 +139,31 @@ typedef struct
   };
 } txp_input;
 
-typedef struct {
+typedef struct
+{
   txp_file_id id;
   FILE *file;
 } txp_input_file;
 
 static txp_input *input_as_txp(ttbc_input_handle_t *h)
 {
-  if (!texpresso) abort();
+  if (!texpresso)
+    abort();
   return (void *)h;
 }
 
 static ttbc_input_handle_t *txp_as_input(txp_input *h)
 {
-  if (!texpresso) abort();
+  if (!texpresso)
+    abort();
   return (void *)h;
 }
 
-static enum txp_file_kind
-kind_of_ttbc_format(ttbc_file_format format)
+static enum txp_file_kind kind_of_ttbc_format(ttbc_file_format format)
 {
-#define CASE(x) case TTBC_FILE_FORMAT_##x: return TXP_KIND_##x
+#define CASE(x)              \
+  case TTBC_FILE_FORMAT_##x: \
+    return TXP_KIND_##x
   switch (format)
   {
     CASE(AFM);
@@ -228,7 +232,7 @@ ttbc_input_handle_t *ttstub_input_open(const char *path,
     txp_file_id id = next_id();
 
     char *ipath =
-      txp_open(texpresso, id, path, kind_of_ttbc_format(format), TXP_READ);
+        txp_open(texpresso, id, path, kind_of_ttbc_format(format), TXP_READ);
 
     if (ipath)
     {
@@ -455,6 +459,11 @@ size_t ttstub_input_seek(ttbc_input_handle_t *handle,
   if (texpresso)
   {
     txp_input *input = input_as_txp(handle);
+    fprintf(stderr,
+            "[image-seek] id=%llu offset=%zd whence=%d "
+            "before file_pos=%d buf_pos=%d buf_len=%d\n",
+            (unsigned long long)input->id, offset, whence, input->file_pos,
+            input->buf_pos, input->buf_len);
     if (input->id == -1)
       return fseek(input->file, offset, whence);
 
@@ -475,13 +484,20 @@ size_t ttstub_input_seek(ttbc_input_handle_t *handle,
       input->file_pos = ofs;
       input->buf_pos = input->buf_len = 0;
     }
+    fprintf(stderr,
+            "[image-seek] id=%llu offset=%zd whence=%d "
+            "before file_pos=%d buf_pos=%d buf_len=%d\n",
+            (unsigned long long)input->id, offset, whence, input->file_pos,
+            input->buf_pos, input->buf_len);
 
     return input->file_pos + input->buf_pos;
   }
   return fseek(input_as_file(handle), offset, whence);
 }
 
-static ssize_t internal_input_read(ttbc_input_handle_t *handle, char *data, size_t len)
+static ssize_t internal_input_read(ttbc_input_handle_t *handle,
+                                   char *data,
+                                   size_t len)
 {
   if (texpresso)
   {
@@ -509,7 +525,8 @@ static ssize_t internal_input_read(ttbc_input_handle_t *handle, char *data, size
     if (len < sizeof(input->buffer))
     {
       input->file_pos = input->file_pos + input->buf_len;
-      input->buf_len = txp_read(texpresso, input->id, input->file_pos, input->buffer, len);
+      input->buf_len =
+          txp_read(texpresso, input->id, input->file_pos, input->buffer, len);
       if (len > input->buf_len)
         len = input->buf_len;
       memmove(data, input->buffer, len);
@@ -536,7 +553,7 @@ ssize_t ttstub_input_read(ttbc_input_handle_t *handle, char *data, size_t len)
   ssize_t result = internal_input_read(handle, data, len);
 
   if (result <= 0)
-      return result;
+    return result;
 
   while (result <= len)
   {
@@ -594,17 +611,18 @@ static ttbc_output_handle_t *file_as_output(FILE *h)
 static txp_file_id output_as_txp(ttbc_output_handle_t *p)
 {
   uintptr_t h = (uintptr_t)p;
-  if (!texpresso || (h > 1024 && h != (uintptr_t)-1)) abort();
+  if (!texpresso || (h > 1024 && h != (uintptr_t)-1))
+    abort();
   return h;
 }
 
 static ttbc_output_handle_t *txp_as_output(txp_file_id h)
 {
   uintptr_t p = h;
-  if (!texpresso) abort();
+  if (!texpresso)
+    abort();
   return (void *)p;
 }
-
 
 int ttstub_output_flush(ttbc_output_handle_t *handle)
 {
@@ -648,7 +666,8 @@ ttbc_output_handle_t *ttstub_output_open(char const *path, int is_gz)
   if (in_initex_mode && path)
   {
     const char *p = path;
-    while (*p && *p != '/') p++;
+    while (*p && *p != '/')
+      p++;
     if (!*p)
       path = format_path(path);
   }
@@ -670,7 +689,7 @@ ttbc_output_handle_t *ttstub_output_open_format(char const *path, int is_gz)
 ttbc_output_handle_t *ttstub_output_open_stdout(void)
 {
   if (texpresso)
-    return (void*)(uintptr_t)(-1);
+    return (void *)(uintptr_t)(-1);
 
   return file_as_output(stdout);
 }
@@ -818,15 +837,26 @@ PRINTF_FUNC(1, 2) void ttstub_issue_error(const char *format, ...)
 
 // FIXME: Implement bounds caching later
 
-int ttstub_pic_get_cached_bounds(const char *name, int type, int page, float bounds[4])
+int ttstub_pic_get_cached_bounds(const char *name,
+                                 int type,
+                                 int page,
+                                 float bounds[4])
 {
-  if (texpresso)
-    return txp_gpic(texpresso, name, type, page, bounds);
+  int result = 0;
 
-  return 0;
+  if (texpresso)
+    result = txp_gpic(texpresso, name, type, page, bounds);
+
+  fprintf(stderr, "[gpic] name=%s type=%d page=%d result=%d\n", name, type,
+          page, result);
+
+  return result;
 }
 
-void ttstub_pic_set_cached_bounds(const char *name, int type, int page, const float bounds[4])
+void ttstub_pic_set_cached_bounds(const char *name,
+                                  int type,
+                                  int page,
+                                  const float bounds[4])
 {
   if (texpresso)
     txp_spic(texpresso, name, type, page, bounds);
@@ -913,8 +943,7 @@ static bool bootstrap_format(void)
 
   in_initex_mode = true;
   primary_document = format_name;
-  tt_history_t result =
-      tt_run_engine("texpresso.fmt", format_name, 0);
+  tt_history_t result = tt_run_engine("texpresso.fmt", format_name, 0);
   in_initex_mode = false;
   primary_document = NULL;
 

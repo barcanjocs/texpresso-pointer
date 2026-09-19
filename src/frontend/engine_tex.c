@@ -22,22 +22,22 @@
  * IN THE SOFTWARE.
  */
 
-#include <mupdf/fitz/buffer.h>
-#include <stdlib.h>
-#include <limits.h>
-#include <unistd.h>
-#include <string.h>
 #include <fcntl.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
+#include <limits.h>
+#include <mupdf/fitz/buffer.h>
 #include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include "editor.h"
 #include "engine.h"
 #include "incdvi.h"
 #include "mydvi.h"
 #include "state.h"
 #include "synctex.h"
-#include "editor.h"
 
 typedef struct
 {
@@ -90,11 +90,13 @@ struct tex_engine
   incdvi_t *dvi;
   synctex_t *stex;
 
-  struct {
+  struct
+  {
     int trace_len, offset, flush;
   } rollback;
 
-  struct {
+  struct
+  {
     bool active;
     query_t query;
     char path[1024];
@@ -110,7 +112,7 @@ static process_t *get_process(struct tex_engine *t)
 {
   if (t->process_count == 0)
     mabort();
-  return &t->processes[t->process_count-1];
+  return &t->processes[t->process_count - 1];
 }
 
 // Useful routines
@@ -130,7 +132,7 @@ static char *last_index(char *path, char needle)
 // tex_engine implementation
 
 TXP_ENGINE_DEF_CLASS;
-#define SELF struct tex_engine *self = (struct tex_engine*)_self
+#define SELF struct tex_engine *self = (struct tex_engine *)_self
 
 static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q);
 
@@ -186,15 +188,15 @@ static pid_t exec_xelatex_generic(char **args, int *fd)
   return pid;
 }
 
-static pid_t exec_xelatex(char *engine_path, bool use_texlive, const char *filename, int *fd)
+static pid_t exec_xelatex(char *engine_path,
+                          bool use_texlive,
+                          const char *filename,
+                          int *fd)
 {
-  char *args[] = {
-    engine_path,
-    (use_texlive ? "-texlive" : "-tectonic"),
-    "-texpresso",
-    (char*)filename,
-    NULL
-  };
+  fprintf(stderr, "[texpresso] provider: %s\n",
+          use_texlive ? "texlive" : "tectonic");
+  char *args[] = {engine_path, (use_texlive ? "-texlive" : "-tectonic"),
+                  "-texpresso", (char *)filename, NULL};
 
   pid_t pid = exec_xelatex_generic(args, fd);
   fprintf(stderr, "[process] launched pid %d (using %s)\n", pid, engine_path);
@@ -209,7 +211,8 @@ static void prepare_process(fz_context *ctx, struct tex_engine *self)
     log_rollback(ctx, self->log, self->restart);
     self->process_count = 1;
     process_t *p = get_process(self);
-    p->pid = exec_xelatex(self->engine_path, self->use_texlive, self->name, &p->fd);
+    p->pid =
+        exec_xelatex(self->engine_path, self->use_texlive, self->name, &p->fd);
     p->trace_len = 0;
     if (!channel_handshake(self->c, p->fd))
       mabort();
@@ -235,7 +238,7 @@ static void pop_process(fz_context *ctx, struct tex_engine *self)
   channel_reset(self->c);
   self->process_count -= 1;
   mark_t mark =
-    self->process_count > 0 ? get_process(self)->snap : self->restart;
+      self->process_count > 0 ? get_process(self)->snap : self->restart;
   log_rollback(ctx, self->log, mark);
 }
 
@@ -269,21 +272,21 @@ static bool read_query(struct tex_engine *self, channel_t *t, query_t *q)
 
 static void decimate_processes(struct tex_engine *self)
 {
-  bool keep[MAX_PROCESS] = {0,};
+  bool keep[MAX_PROCESS] = {
+      0,
+  };
 
   int target = 32;
   fprintf(stderr, "before process decimation:\n");
-  for  (int i = 0; i < self->process_count; ++i)
+  for (int i = 0; i < self->process_count; ++i)
   {
     process_t *p = &self->processes[i];
-    fprintf(stderr, "- position %d, time %dms [pid %d]\n",
-            p->trace_len,
-            p->trace_len == 0 ? 0 : self->trace[p->trace_len - 1].time,
-            p->pid);
+    fprintf(stderr, "- position %d, time %dms [pid %d]\n", p->trace_len,
+            p->trace_len == 0 ? 0 : self->trace[p->trace_len - 1].time, p->pid);
     if (p->trace_len >= target)
     {
-        keep[i] = true;
-        target *= 2;
+      keep[i] = true;
+      target *= 2;
     }
   }
 
@@ -320,13 +323,11 @@ static void decimate_processes(struct tex_engine *self)
   self->process_count = i;
 
   fprintf(stderr, "after process decimation:\n");
-  for  (int i = 0; i < self->process_count; ++i)
+  for (int i = 0; i < self->process_count; ++i)
   {
     process_t *p = &self->processes[i];
-    fprintf(stderr, "- position %d, time %dms [pid %d]\n",
-            p->trace_len,
-            p->trace_len == 0 ? 0 : self->trace[p->trace_len - 1].time,
-            p->pid);
+    fprintf(stderr, "- position %d, time %dms [pid %d]\n", p->trace_len,
+            p->trace_len == 0 ? 0 : self->trace[p->trace_len - 1].time, p->pid);
   }
 }
 
@@ -345,7 +346,9 @@ static void engine_destroy(txp_engine *_self, fz_context *ctx)
   fz_free(ctx, self);
 }
 
-static const char *expand_path(const char **inclusion_path, const char *name, char buffer[1024])
+static const char *expand_path(const char **inclusion_path,
+                               const char *name,
+                               char buffer[1024])
 {
   if (!*inclusion_path || !(*inclusion_path)[0])
     return NULL;
@@ -365,29 +368,33 @@ static const char *expand_path(const char **inclusion_path, const char *name, ch
 
   while (*i)
   {
-    if (p > buffer + 1024) mabort();
+    if (p > buffer + 1024)
+      mabort();
     *p = *i;
     p += 1;
     i += 1;
   }
-  *inclusion_path = i+1;
+  *inclusion_path = i + 1;
 
   if (p[-1] != '/')
   {
-    if (p > buffer + 1024) mabort();
+    if (p > buffer + 1024)
+      mabort();
     p[0] = '/';
     p += 1;
   }
 
   while (*name)
   {
-    if (p > buffer + 1024) mabort();
+    if (p > buffer + 1024)
+      mabort();
     *p = *name;
     p += 1;
     name += 1;
   }
 
-  if (p > buffer + 1024) mabort();
+  if (p > buffer + 1024)
+    mabort();
   *p = '\0';
 
   return buffer;
@@ -399,15 +406,18 @@ static void check_fid(file_id fid)
     mabort();
 }
 
-static void record_seen(struct tex_engine *self, fileentry_t *entry, int seen, int time)
+static void record_seen(struct tex_engine *self,
+                        fileentry_t *entry,
+                        int seen,
+                        int time)
 {
   process_t *p = get_process(self);
 
-  if (p->trace_len > 0 && self->trace[p->trace_len-1].entry == entry &&
+  if (p->trace_len > 0 && self->trace[p->trace_len - 1].entry == entry &&
       (self->process_count <= 1 ||
-      self->processes[self->process_count - 2].trace_len != p->trace_len))
+       self->processes[self->process_count - 2].trace_len != p->trace_len))
   {
-    self->trace[p->trace_len-1].time = time;
+    self->trace[p->trace_len - 1].time = time;
     entry->seen = seen;
     return;
   }
@@ -415,9 +425,11 @@ static void record_seen(struct tex_engine *self, fileentry_t *entry, int seen, i
   if (p->trace_len == self->trace_cap)
   {
     int new_cap = self->trace_cap == 0 ? 8 : self->trace_cap * 2;
-    fprintf(stderr, "[info] trace has %d entries, growing to %d\n", self->trace_cap, new_cap);
+    fprintf(stderr, "[info] trace has %d entries, growing to %d\n",
+            self->trace_cap, new_cap);
     trace_entry_t *newtr = calloc(sizeof(trace_entry_t), new_cap);
-    if (newtr == NULL) abort();
+    if (newtr == NULL)
+      abort();
     if (self->trace)
     {
       memcpy(newtr, self->trace, self->trace_cap * sizeof(trace_entry_t));
@@ -428,9 +440,9 @@ static void record_seen(struct tex_engine *self, fileentry_t *entry, int seen, i
   }
 
   self->trace[p->trace_len] = (trace_entry_t){
-    .entry = entry,
-    .seen = entry->seen,
-    .time = time,
+      .entry = entry,
+      .seen = entry->seen,
+      .time = time,
   };
   entry->seen = seen;
   p->trace_len += 1;
@@ -452,8 +464,10 @@ static fz_buffer *output_data(fileentry_t *e)
   return e->saved.data;
 }
 
-static const char *
-lookup_path(struct tex_engine *self, const char *path, char buf[1024], struct stat *st)
+static const char *lookup_path(struct tex_engine *self,
+                               const char *path,
+                               char buf[1024],
+                               struct stat *st)
 {
   struct stat st1;
   if (st == NULL)
@@ -462,11 +476,11 @@ lookup_path(struct tex_engine *self, const char *path, char buf[1024], struct st
   const char *fs_path = path;
   const char *inclusion_path = self->inclusion_path;
 
-  do {
+  do
+  {
     if (stat(fs_path, st) != -1)
       break;
-  }
-  while ((fs_path = expand_path(&inclusion_path, path, buf)));
+  } while ((fs_path = expand_path(&inclusion_path, path, buf)));
 
   return fs_path;
 }
@@ -484,10 +498,11 @@ static bool need_snapshot(fz_context *ctx, struct tex_engine *self, int time)
   if (process > 0)
   {
     // There is already some snapshot, stop if no new event has been traced
-    if (self->processes[process].trace_len == self->processes[process-1].trace_len)
+    if (self->processes[process].trace_len ==
+        self->processes[process - 1].trace_len)
       return 0;
 
-    last_time = self->trace[self->processes[process-1].trace_len - 1].time;
+    last_time = self->trace[self->processes[process - 1].trace_len - 1].time;
 
     // TODO Alternative
     // Checking that some new event happened avoid entering an infinite fork
@@ -498,7 +513,7 @@ static bool need_snapshot(fz_context *ctx, struct tex_engine *self, int time)
   }
   else
   {
-    #ifdef __APPLE__
+#ifdef __APPLE__
     // Workaround for macOS
     // Due to limitations in the implementation of fork on macOS, it is not
     // possible to load system fonts after fork (without exec). This breaks
@@ -510,7 +525,7 @@ static bool need_snapshot(fz_context *ctx, struct tex_engine *self, int time)
     // have been specified at this point.
     if (!incdvi_output_started(self->dvi))
       return 0;
-    #endif
+#endif
 
     // No snapshot, measure time since root process started
     last_time = 0;
@@ -530,7 +545,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
     {
       check_fid(q->open.fid);
       filecell_t *cell = &self->st.table[q->open.fid];
-      if (cell->entry != NULL) mabort();
+      if (cell->entry != NULL)
+        mabort();
 
       fileentry_t *e = NULL;
 
@@ -588,8 +604,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
       if (e->seen < 0)
         record_seen(self, e, 0, q->time);
 
-      enum accesslevel level =
-        (q->tag == Q_OPRD) ? FILE_READ : FILE_WRITE;
+      enum accesslevel level = (q->tag == Q_OPRD) ? FILE_READ : FILE_WRITE;
 
       if (level == FILE_READ)
       {
@@ -611,7 +626,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
                 channel_write_answer(self->c, p->fd, &a);
                 break;
               }
-              mabort("path: %s\nmode:%c\n", q->open.path, (q->tag == Q_OPRD) ? 'r' : 'w');
+              mabort("path: %s\nmode:%c\n", q->open.path,
+                     (q->tag == Q_OPRD) ? 'r' : 'w');
             }
             e->saved.level = FILE_READ;
             memset(&e->fs_stat, 0, sizeof(e->fs_stat));
@@ -655,9 +671,9 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
           char *ext = last_index(q->open.path, '.');
           if (0)
             fprintf(stderr, "extension is %s\n", ext);
-          if (!ext);
-          else if ((strcmp(ext, "xdv") == 0 ||
-                    strcmp(ext, "dvi") == 0 ||
+          if (!ext)
+            ;
+          else if ((strcmp(ext, "xdv") == 0 || strcmp(ext, "dvi") == 0 ||
                     strcmp(ext, "pdf") == 0))
           {
             if (self->st.document.entry != NULL)
@@ -699,7 +715,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
       int n = strlen(q->open.path);
       a.open.path_len = n;
       a.tag = A_OPEN;
-      editor_notify_lookup(q->open.path, n, q->tag == Q_OPRD, LOOKUP_SUCCESSFUL);
+      editor_notify_lookup(q->open.path, n, q->tag == Q_OPRD,
+                           LOOKUP_SUCCESSFUL);
       memmove(channel_get_buffer(self->c, n), q->open.path, n);
       channel_write_answer(self->c, p->fd, &a);
       break;
@@ -708,9 +725,32 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
     {
       check_fid(q->read.fid);
       fileentry_t *e = self->st.table[q->read.fid].entry;
-      if (e == NULL) mabort();
-      if (e->saved.level < FILE_READ) mabort();
+      if (e == NULL)
+        mabort();
+      if (e->saved.level < FILE_READ)
+        mabort();
       fz_buffer *data = entry_data(e);
+
+      if (strstr(e->path, ".jpg") || strstr(e->path, ".jpeg"))
+      {
+        fprintf(stderr,
+                "[image-read] path=%s pos=%d requested=%d data_len=%d\n",
+                e->path, q->read.pos, q->read.size, (int)data->len);
+
+        if (q->read.pos < data->len)
+        {
+          int n = data->len - q->read.pos;
+          if (n > 16)
+            n = 16;
+
+          fprintf(stderr, "  bytes:");
+          for (int i = 0; i < n; ++i)
+            fprintf(stderr, " %02x",
+                    (unsigned char)data->data[q->read.pos + i]);
+          fprintf(stderr, "\n");
+        }
+      }
+
       if (e->debug_rollback_invalidation > -1)
       {
         if (q->read.pos > e->debug_rollback_invalidation)
@@ -727,8 +767,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
         n = data->len - q->read.pos;
 
       int fork = 0;
-      if (self->fence_pos >= 0 &&
-          self->fences[self->fence_pos].entry == e &&
+      if (self->fence_pos >= 0 && self->fences[self->fence_pos].entry == e &&
           self->fences[self->fence_pos].position < q->read.pos + n)
       {
         if (n < 0)
@@ -737,7 +776,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
         // Weird that n can be negative at this point?!
         fork = (n == 0);
         if (n < 0)
-          mabort("n:%d fence_pos:%d read_pos:%d\n", (int)n, self->fences[self->fence_pos].position, q->read.pos);
+          mabort("n:%d fence_pos:%d read_pos:%d\n", (int)n,
+                 self->fences[self->fence_pos].position, q->read.pos);
       }
       if (fork)
       {
@@ -790,7 +830,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
         e = self->st.table[q->apnd.fid].entry;
       }
 
-      if (e == NULL || e->saved.level != FILE_WRITE) mabort();
+      if (e == NULL || e->saved.level != FILE_WRITE)
+        mabort();
       log_fileentry(ctx, self->log, e);
 
       int pos = e->saved.data->len;
@@ -812,7 +853,9 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
         int npage = synctex_page_count(self->stex);
         int ninput = synctex_input_count(self->stex);
         if (opage != npage || oinput != ninput)
-          fprintf(stderr, "[info] synctex used %d input files, is %d pages long\n", ninput, npage);
+          fprintf(stderr,
+                  "[info] synctex used %d input files, is %d pages long\n",
+                  ninput, npage);
       }
       else if (self->st.log.entry == e)
         editor_append(BUF_LOG, output_data(e), pos);
@@ -830,7 +873,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
 
       filecell_t *cell = &self->st.table[q->clos.fid];
       fileentry_t *e = cell->entry;
-      if (e == NULL) mabort();
+      if (e == NULL)
+        mabort();
       log_filecell(ctx, self->log, cell);
       cell->entry = NULL;
 
@@ -864,7 +908,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
     {
       check_fid(q->clos.fid);
       fileentry_t *e = self->st.table[q->clos.fid].entry;
-      if (e == NULL || e->saved.level < FILE_READ) mabort();
+      if (e == NULL || e->saved.level < FILE_READ)
+        mabort();
       a.tag = A_SIZE;
       a.size.size = entry_data(e)->len;
       if (LOG)
@@ -876,7 +921,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
     {
       check_fid(q->clos.fid);
       fileentry_t *e = self->st.table[q->clos.fid].entry;
-      if (e == NULL || e->saved.level < FILE_READ) mabort();
+      if (e == NULL || e->saved.level < FILE_READ)
+        mabort();
       a.tag = A_MTIM;
       a.mtim.mtime = e->fs_stat.st_mtime;
       if (LOG)
@@ -888,20 +934,21 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
     {
       check_fid(q->seen.fid);
       fileentry_t *e = self->st.table[q->seen.fid].entry;
-      if (e == NULL) mabort();
+      if (e == NULL)
+        mabort();
       if (LOG)
-        fprintf(stderr, "[info] file %s seen: %d -> %d\n", e->path, e->seen, q->seen.pos);
-      if (e->saved.level < FILE_READ) mabort();
-      if (self->fence_pos >= 0 &&
-          self->fences[self->fence_pos].entry == e &&
+        fprintf(stderr, "[info] file %s seen: %d -> %d\n", e->path, e->seen,
+                q->seen.pos);
+      if (e->saved.level < FILE_READ)
+        mabort();
+      if (self->fence_pos >= 0 && self->fences[self->fence_pos].entry == e &&
           self->fences[self->fence_pos].position < q->seen.pos)
       {
         fprintf(stderr,
                 "Seen position invalid wrt fence:\n"
                 "  file %s, seen: %d -> %d\n"
                 "  fence #%d position: %d\n",
-                e->path, e->seen, q->seen.pos,
-                self->fence_pos,
+                e->path, e->seen, q->seen.pos, self->fence_pos,
                 self->fences[self->fence_pos].position);
         mabort();
       }
@@ -943,7 +990,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query_t *q)
     {
       fileentry_t *e = filesystem_lookup(self->fs, q->spic.path);
       if (e && e->saved.level == FILE_READ)
-          e->pic_cache = q->spic.cache;
+        e->pic_cache = q->spic.cache;
       a.tag = A_DONE;
       channel_write_answer(self->c, p->fd, &a);
       break;
@@ -983,17 +1030,17 @@ static void revert_trace(trace_entry_t *te)
   te->entry->seen = te->seen;
 }
 
-static void rollback_processes(fz_context *ctx, struct tex_engine *self, int reverted, int trace)
+static void rollback_processes(fz_context *ctx,
+                               struct tex_engine *self,
+                               int reverted,
+                               int trace)
 {
   self->deferred.active = false;
   clear_convergence_stash(ctx, self);
 
-  fprintf(
-    stderr,
-    "rolling back to position %d\nbefore rollback: %d bytes of output\n",
-    trace,
-    output_length(self->st.document.entry)
-  );
+  fprintf(stderr,
+          "rolling back to position %d\nbefore rollback: %d bytes of output\n",
+          trace, output_length(self->st.document.entry));
   if (self->fence_pos < 0)
   {
     fprintf(stderr, "No fences, assuming process finished\n");
@@ -1002,16 +1049,15 @@ static void rollback_processes(fz_context *ctx, struct tex_engine *self, int rev
   }
 
   fprintf(stderr, "Last trace entries:\n");
-  for (int i = get_process(self)->trace_len - 1, j = fz_maxi(i - 10, 0); i > j; i--)
+  for (int i = get_process(self)->trace_len - 1, j = fz_maxi(i - 10, 0); i > j;
+       i--)
   {
-    fprintf(stderr, "- %s@%d, %dms\n",
-            self->trace[i].entry->path,
-            self->trace[i].seen,
-            self->trace[i].time);
+    fprintf(stderr, "- %s@%d, %dms\n", self->trace[i].entry->path,
+            self->trace[i].seen, self->trace[i].time);
   }
 
   fprintf(stderr, "Snapshots:\n");
-  for  (int i = 0; i < self->process_count; ++i)
+  for (int i = 0; i < self->process_count; ++i)
   {
     process_t *p = &self->processes[i];
     fprintf(stderr, "- position %d, time %dms\n", p->trace_len,
@@ -1029,24 +1075,27 @@ static void rollback_processes(fz_context *ctx, struct tex_engine *self, int rev
   }
 
   fprintf(stderr, "after rollback: %d bytes of output\n",
-    self->st.document.entry
-    ? (int)self->st.document.entry->saved.data->len
-    : 0
-  );
+          self->st.document.entry
+              ? (int)self->st.document.entry->saved.data->len
+              : 0);
 
   if (self->st.document.entry)
   {
-    fprintf(stderr, "[info] before rollback: %d pages\n", incdvi_page_count(self->dvi));
+    fprintf(stderr, "[info] before rollback: %d pages\n",
+            incdvi_page_count(self->dvi));
     incdvi_update(ctx, self->dvi, self->st.document.entry->saved.data);
-    fprintf(stderr, "[info] after  rollback: %d pages\n", incdvi_page_count(self->dvi));
+    fprintf(stderr, "[info] after  rollback: %d pages\n",
+            incdvi_page_count(self->dvi));
   }
   else
     incdvi_reset(self->dvi);
   if (self->st.synctex.entry)
   {
-    fprintf(stderr, "[info] before rollback: %d pages in synctex\n", synctex_page_count(self->stex));
+    fprintf(stderr, "[info] before rollback: %d pages in synctex\n",
+            synctex_page_count(self->stex));
     synctex_update(ctx, self->stex, self->st.synctex.entry->saved.data);
-    fprintf(stderr, "[info] after  rollback: %d pages in synctex\n", synctex_page_count(self->stex));
+    fprintf(stderr, "[info] after  rollback: %d pages in synctex\n",
+            synctex_page_count(self->stex));
   }
   else
     synctex_rollback(ctx, self->stex, 0);
@@ -1063,7 +1112,10 @@ static bool possible_fence(trace_entry_t *te)
   return 1;
 }
 
-static int compute_fences(fz_context *ctx, struct tex_engine *self, int trace, int offset)
+static int compute_fences(fz_context *ctx,
+                          struct tex_engine *self,
+                          int trace,
+                          int offset)
 {
   self->fence_pos = -1;
 
@@ -1094,9 +1146,11 @@ static int compute_fences(fz_context *ctx, struct tex_engine *self, int trace, i
           self->fences[self->fence_pos].position);
 
   int target_process = self->process_count - 1;
-  while (target_process >= 0 && self->processes[target_process].trace_len > trace)
+  while (target_process >= 0 &&
+         self->processes[target_process].trace_len > trace)
     target_process -= 1;
-  int target_trace = target_process >= 0 ? self->processes[target_process].trace_len : -1;
+  int target_trace =
+      target_process >= 0 ? self->processes[target_process].trace_len : -1;
   while (trace > target_trace && self->fence_pos < 15)
   {
     if (self->trace[trace].time <= time && possible_fence(&self->trace[trace]))
@@ -1108,10 +1162,11 @@ static int compute_fences(fz_context *ctx, struct tex_engine *self, int trace, i
         self->fences[self->fence_pos].position = 0;
       time -= delta;
       delta *= 2;
-      fprintf(stderr, "[fence] placing fence %d at trace position %d, file %s, offset %d\n",
-              self->fence_pos, trace,
-              self->fences[self->fence_pos].entry->path,
-              self->fences[self->fence_pos].position);
+      fprintf(
+          stderr,
+          "[fence] placing fence %d at trace position %d, file %s, offset %d\n",
+          self->fence_pos, trace, self->fences[self->fence_pos].entry->path,
+          self->fences[self->fence_pos].position);
     }
     trace -= 1;
   }
@@ -1125,7 +1180,9 @@ static int engine_page_count(txp_engine *_self)
   return incdvi_page_count(self->dvi);
 }
 
-static fz_display_list *engine_render_page(txp_engine *_self, fz_context *ctx, int page)
+static fz_display_list *engine_render_page(txp_engine *_self,
+                                           fz_context *ctx,
+                                           int page)
 {
   SELF;
 
@@ -1143,7 +1200,9 @@ static fz_display_list *engine_render_page(txp_engine *_self, fz_context *ctx, i
   return dl;
 }
 
-static bool engine_step(txp_engine *_self, fz_context *ctx, bool restart_if_needed)
+static bool engine_step(txp_engine *_self,
+                        fz_context *ctx,
+                        bool restart_if_needed)
 {
   SELF;
   if (restart_if_needed)
@@ -1200,8 +1259,8 @@ static int scan_entry(fz_context *ctx, struct tex_engine *self, fileentry_t *e)
 
   if (!fs_path)
   {
-      fprintf(stderr, "[scan] file removed\n");
-      return -1;
+    fprintf(stderr, "[scan] file removed\n");
+    return -1;
   }
 
   if (stat_same(&st, &e->fs_stat))
@@ -1240,9 +1299,11 @@ static int scan_entry(fz_context *ctx, struct tex_engine *self, fileentry_t *e)
     return -1;
   }
   else if (olen < nlen)
-    fprintf(stderr, "[scan] content has grown from %d to %d bytes\n", olen, nlen);
+    fprintf(stderr, "[scan] content has grown from %d to %d bytes\n", olen,
+            nlen);
   else
-    fprintf(stderr, "[scan] content was shrinked from %d to %d bytes\n", olen, nlen);
+    fprintf(stderr, "[scan] content was shrinked from %d to %d bytes\n", olen,
+            nlen);
 
   fz_drop_buffer(ctx, e->fs_data);
   e->fs_data = buf;
@@ -1267,7 +1328,10 @@ static void rollback_begin(fz_context *ctx, struct tex_engine *self)
   self->rollback.flush = 0;
 }
 
-static bool rollback_end(fz_context *ctx, struct tex_engine *self, int *tracep, int *offsetp)
+static bool rollback_end(fz_context *ctx,
+                         struct tex_engine *self,
+                         int *tracep,
+                         int *offsetp)
 {
   int trace_len = self->rollback.trace_len;
   self->rollback.trace_len = NOT_IN_TRANSACTION;
@@ -1332,12 +1396,14 @@ static bool process_pending_messages(fz_context *ctx, struct tex_engine *self)
   // - kill if stuck
   // - check pending SEEN messages to update vision of the process
   int nothing_seen = 1;
-  do {
+  do
+  {
     if (!channel_has_pending_query(self->c, p->fd, 10))
     {
       fprintf(stderr, "[kill] worker might be stuck, killing\n");
       // The process hasn't answered in 10ms
-      // It might be stuck in long computation or a loop, kill it to start from the previous one.
+      // It might be stuck in long computation or a loop, kill it to start from
+      // the previous one.
       close_process(p);
       break;
     }
@@ -1345,28 +1411,31 @@ static bool process_pending_messages(fz_context *ctx, struct tex_engine *self)
     switch (channel_peek_query(self->c, p->fd))
     {
       case Q_SEEN:
+      {
+        query_t q;
+        if (!read_query(self, self->c, &q))
         {
-          query_t q;
-          if (!read_query(self, self->c, &q))
-          {
-            close(p->fd);
-            p->fd = -1;
-            break;
-          }
-          answer_query(ctx, self, &q);
-          nothing_seen = 0;
-          continue;
+          close(p->fd);
+          p->fd = -1;
+          break;
         }
+        answer_query(ctx, self, &q);
+        nothing_seen = 0;
+        continue;
+      }
       default:
         break;
     }
-  } while(0);
+  } while (0);
 
   self->rollback.flush = 1;
   return nothing_seen;
 }
 
-static void rollback_add_change(fz_context *ctx, struct tex_engine *self, fileentry_t *e, int changed)
+static void rollback_add_change(fz_context *ctx,
+                                struct tex_engine *self,
+                                fileentry_t *e,
+                                int changed)
 {
   int trace_len = self->rollback.trace_len;
   // if (changed > 0) changed--;
@@ -1393,13 +1462,15 @@ static void rollback_add_change(fz_context *ctx, struct tex_engine *self, fileen
 
   if (self->trace[trace_len].entry != e)
   {
-    fprintf(stderr, "Rollback position: %d. Entries: %d. Seen: %d. Changed: %d. Last trace entries:\n", trace_len, get_process(self)->trace_len, e->seen, changed);
-    for (int i = get_process(self)->trace_len - 1, j = fz_maxi(i - 10, 0); i > j; i--)
+    fprintf(stderr,
+            "Rollback position: %d. Entries: %d. Seen: %d. Changed: %d. Last "
+            "trace entries:\n",
+            trace_len, get_process(self)->trace_len, e->seen, changed);
+    for (int i = get_process(self)->trace_len - 1, j = fz_maxi(i - 10, 0);
+         i > j; i--)
     {
-      fprintf(stderr, "- %s@%d, %dms\n",
-              self->trace[i].entry->path,
-              self->trace[i].seen,
-              self->trace[i].time);
+      fprintf(stderr, "- %s@%d, %dms\n", self->trace[i].entry->path,
+              self->trace[i].seen, self->trace[i].time);
     }
     mabort();
   }
@@ -1424,11 +1495,9 @@ static bool is_system_output(const char *path)
   const char *dot = strrchr(path, '.');
   if (!dot)
     return false;
-  return strcmp(dot, ".log") == 0
-      || strcmp(dot, ".xdv") == 0
-      || strcmp(dot, ".dvi") == 0
-      || strcmp(dot, ".pdf") == 0
-      || strcmp(dot, ".synctex") == 0;
+  return strcmp(dot, ".log") == 0 || strcmp(dot, ".xdv") == 0 ||
+         strcmp(dot, ".dvi") == 0 || strcmp(dot, ".pdf") == 0 ||
+         strcmp(dot, ".synctex") == 0;
 }
 
 // Reset per-entry `seen` counters before respawning the engine. Without
@@ -1485,10 +1554,10 @@ static void engine_finish_convergence(txp_engine *_self, fz_context *ctx)
       continue;
     if (is_system_output(e->path))
       continue;
-    bool stashed_match = e->edit_data && e->edit_data_from_convergence
-                         && e->saved.data->len == e->edit_data->len
-                         && memcmp(e->saved.data->data, e->edit_data->data,
-                                   e->saved.data->len) == 0;
+    bool stashed_match = e->edit_data && e->edit_data_from_convergence &&
+                         e->saved.data->len == e->edit_data->len &&
+                         memcmp(e->saved.data->data, e->edit_data->data,
+                                e->saved.data->len) == 0;
     if (!stashed_match)
     {
       converged = false;
@@ -1603,7 +1672,9 @@ static synctex_t *engine_synctex(txp_engine *_self, fz_buffer **buf)
   return self->stex;
 }
 
-static fileentry_t *engine_find_file(txp_engine *_self, fz_context *ctx, const char *path)
+static fileentry_t *engine_find_file(txp_engine *_self,
+                                     fz_context *ctx,
+                                     const char *path)
 {
   SELF;
   return filesystem_lookup_or_create(ctx, self->fs, path);
@@ -1641,5 +1712,5 @@ txp_engine *txp_create_tex_engine(fz_context *ctx,
   self->rollback.trace_len = NOT_IN_TRANSACTION;
   self->deferred.active = false;
 
-  return (txp_engine*)self;
+  return (txp_engine *)self;
 }
