@@ -792,7 +792,27 @@ static bool is_oneliner(enum kind k)
 {
   return (k >= STEX_CURRENT && k <= STEX_MATH);
 }
-
+static void synctex_set_candidate(synctex_t *stx,
+                                  int page,
+                                  int line,
+                                  int x,
+                                  int y,
+                                  int *updated_candidate)
+{
+  /*
+   * Prefer an exact source-line match over a fallback from
+   * an earlier source line.
+   */
+  if (stx->candidate_page == -1 || line == stx->target_line ||
+      (stx->candidate_line != stx->target_line && line > stx->candidate_line))
+  {
+    stx->candidate_page = page;
+    stx->candidate_x = x;
+    stx->candidate_y = y;
+    stx->candidate_line = line;
+    *updated_candidate = 1;
+  }
+}
 static bool synctex_find_input(fz_context *ctx, synctex_t *stx, fz_buffer *buf)
 {
   if (stx->input_found)
@@ -850,108 +870,93 @@ static void synctex_backscan_page(fz_context *ctx,
   int line = stx->target_line;
   const uint8_t *ptr = synctex_page_pointer(ctx, stx, buf, page);
 
-  struct record r =
-                    {
-                        0,
-                    },
-                r0;
+  struct record r = {0}, r0;
   r0.link.tag = -1;
 
   int had_record = 0;
+  int exact_line_found = 0;
 
   while ((ptr = parse_line(ptr, &r)))
   {
-    // Remember the first location of the page to skip it:
-    // it is the location where the shipout procedure was invoked
-    // not the location of actual source contents
-    if (r0.link.tag == -1 && (r.kind == STEX_ENTER_H || STEX_ENTER_V))
+    /*
+     * Remember first location of page to skip it.
+     */
+    if (r0.link.tag == -1 && (r.kind == STEX_ENTER_H || r.kind == STEX_ENTER_V))
     {
       r0 = r;
 
-      // Heuristic: if the targetted line is just at the beginning of the next
-      // page and before and at the instruction that trigerred the flush, it is
-      // useful to use the top of next page as an approximation.
-      // (maybe there won't be any other synctex record to attach to).
       if (r0.link.tag == tag && r0.link.line < line)
         return;
+
       continue;
     }
 
-    if (is_oneliner(r.kind) && r.link.tag == tag)
+    /*
+     * Forward SyncTeX can associate a source line with either
+     * a one-liner or a box-enter record. Both carry useful
+     * physical coordinates.
+     */
+    if (r.link.tag != tag || !(is_oneliner(r.kind) || r.kind == STEX_ENTER_H ||
+                               r.kind == STEX_ENTER_V))
+      continue;
+
+    /*
+     * Don't use the page-opening record itself as a candidate.
+     */
+    if (r.link.tag == r0.link.tag && r.link.line == r0.link.line)
+      continue;
+
+    had_record = 1;
+
+    /*
+     * Exact target line:
+     *
+     * Keep scanning the entire page. A later record for the same
+     * source line may be more precise than an earlier box record.
+     */
+    if (r.link.line == line)
     {
-      if (r.link.tag == r0.link.tag && r.link.line == r0.link.line)
-        // Skip other occurrences of the first location of the page: it doesn't
-        // belong to it.
-        continue;
+      stx->candidate_page = page;
+      stx->candidate_x = r.point.x;
+      stx->candidate_y = r.point.y;
+      stx->candidate_line = r.link.line;
+      *updated_candidate = 1;
 
-      // Remember we processed at least one record
-      had_record = 1;
+      exact_line_found = 1;
+      continue;
+    }
 
-      // Remember that we have seen at least one record
-      // Check if candidate
-      if (r.link.tag == tag && r.link.line >= line - 5 &&
-          r.link.line <= line + 2)
-      {
-        fprintf(stderr, "[synctex near] target=%d:%d record=%d:%d x=%d y=%d\n",
-                line, stx->target_column, r.link.line, r.link.column, r.point.x,
-                r.point.y);
-      }
-      if (r.link.line <= line ||
-          (r.link.line > line && stx->candidate_page == -1))
-      {
-        stx->candidate_page = page;
-        stx->candidate_x = r.point.x;
-        stx->candidate_y = r.point.y;
-        stx->candidate_line = r.link.line;
-        *updated_candidate = 1;
-      }
-
-      // Check if definitive match
-      if (r.link.line >= line)
-      {
-        if (stx->candidate_page != page)
-        {
-          // The beginning and ending of the match crosses two (or more?)
-          // pages. Use current page to decide which one to keep.
-          if (stx->target_current_page == page)
-          {
-            stx->candidate_page = page;
-            stx->candidate_x = r.point.x;
-            stx->candidate_y = r.point.y;
-            stx->candidate_line = r.link.line;
-            *updated_candidate = 1;
-          }
-        }
-        synctex_clear_search(stx);
-        return;
-      }
+    /*
+     * Before finding an exact line, retain the closest preceding
+     * source location as a fallback.
+     */
+    if (!exact_line_found && r.link.line < line)
+    {
+      synctex_set_candidate(stx, page, r.link.line, r.point.x, r.point.y,
+                            updated_candidate);
     }
   }
 
-  // No record? Could be an empty page or a beamer page.
+  /*
+   * If this page contained an exact target-line record, we're done
+   * with this page. The final exact record encountered above is now
+   * the candidate.
+   */
+  if (exact_line_found)
+    return;
+
+  /*
+   * No exact record was found. Preserve the existing fallback for
+   * pages where the source line is represented by the surrounding
+   * SyncTeX structure rather than a direct record.
+   */
   if (!had_record)
   {
-    // If it is ending after the target, we have a match or at least a
-    // candidate.
     if (r0.link.tag == tag && r0.link.line >= line)
     {
-      // If we had no candidate, or the current record is not worse, update.
-      if (stx->candidate_page == -1 || (page <= stx->target_current_page &&
-                                        stx->candidate_line == r0.link.line))
-      {
-        stx->candidate_page = page;
-        stx->candidate_x = r0.point.x;
-        stx->candidate_y = r0.point.y;
-        stx->candidate_line = r0.link.line;
-        *updated_candidate = 1;
-      }
+      synctex_set_candidate(stx, page, r0.link.line, r0.point.x, r0.point.y,
+                            updated_candidate);
     }
-    // We have a candidate and future candidates cannot improve or we are past
-    // the current page, consider it a match.
-    // if (stx->candidate_page != -1 &&
-    //     ((r0.link.tag == tag && r0.link.line > stx->candidate_line) ||
-    //      (page >= stx->target_current_page)))
-    //   synctex_clear_search(stx);
   }
 }
 
@@ -974,7 +979,15 @@ int synctex_find_target(fz_context *ctx,
   {
     synctex_backscan_page(ctx, stx, buf, stx->scanned_pages,
                           &updated_candidate);
+
     stx->scanned_pages += 1;
+
+    /*
+     * Once we have an exact source-line match, don't let a later
+     * PDF page replace it with a less relevant fallback.
+     */
+    if (updated_candidate && stx->candidate_line == stx->target_line)
+      break;
   }
 
   if (updated_candidate)
