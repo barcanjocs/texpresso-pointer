@@ -69,7 +69,7 @@ bool txp_renderer_page_position(fz_context *ctx,
                                 SDL_FRect *rect,
                                 fz_point *translate,
                                 float *scale);
-
+bool txp_renderer_is_two_column(fz_context *ctx, txp_renderer *self);
 void txp_renderer_render(fz_context *ctx, txp_renderer *self);
 
 void txp_renderer_set_scale_factor(fz_context *ctx,

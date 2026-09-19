@@ -279,8 +279,8 @@ static void render(fz_context *ctx, ui_state *ui)
     int screen_w, screen_h;
     txp_renderer_screen_size(ctx, ui->doc_renderer, &screen_w, &screen_h);
 
-    bool right_column = cursor.x > screen_w / 2.0f;
-
+    bool right_column = txp_renderer_is_two_column(ctx, ui->doc_renderer) &&
+                        cursor.x > screen_w / 2.0f;
     SDL_SetRenderDrawColor(ui->sdl_renderer, 230, 40, 40, 255);
 
     SDL_Vertex vertices[3];

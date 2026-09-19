@@ -57,6 +57,7 @@ struct txp_renderer_s
   fz_display_list *contents;
   fz_display_list **pages;
   int page_count;
+  bool two_column;
   fz_rect *page_bounds;
   float *page_y;
   fz_stext_page *stext;
@@ -73,7 +74,7 @@ struct txp_renderer_s
 
   uint32_t cached_bg, cached_fg;
 };
-
+static bool detect_two_column_page(fz_context *ctx, txp_renderer *self);
 static void txp_get_colors(txp_renderer_config *config,
                            uint32_t *bg,
                            uint32_t *fg)
@@ -236,6 +237,7 @@ void txp_renderer_set_pages(fz_context *ctx,
     fz_drop_display_list(ctx, self->contents);
 
   self->contents = fz_keep_display_list(ctx, pages[0]);
+  self->two_column = detect_two_column_page(ctx, self);
 
   if (self->stext)
   {
@@ -246,6 +248,10 @@ void txp_renderer_set_pages(fz_context *ctx,
   self->contents_bounds_valid = 0;
   self->selection_count = 0;
   clear_texture(self);
+}
+bool txp_renderer_is_two_column(fz_context *ctx, txp_renderer *self)
+{
+  return self->two_column;
 }
 
 fz_display_list *txp_renderer_get_contents(fz_context *ctx, txp_renderer *self)
@@ -296,6 +302,46 @@ static fz_stext_page *get_stext(fz_context *ctx, txp_renderer *self)
     fz_drop_device(ctx, dev);
   }
   return self->stext;
+}
+static bool detect_two_column_page(fz_context *ctx, txp_renderer *self)
+{
+  fz_stext_page *stext = get_stext(ctx, self);
+  if (!stext)
+    return false;
+
+  /*
+   * Look for two substantial text blocks whose horizontal centers
+   * are clearly separated. Ignore very small blocks so that things
+   * like page numbers, labels, and marginal text don't trigger the
+   * two-column mode.
+   */
+  int left_blocks = 0;
+  int right_blocks = 0;
+
+  float page_width = self->page_bounds[0].x1 - self->page_bounds[0].x0;
+  float split = self->page_bounds[0].x0 + page_width * 0.5f;
+
+  for (fz_stext_block *block = stext->first_block; block; block = block->next)
+  {
+    if (block->type != FZ_STEXT_BLOCK_TEXT)
+      continue;
+
+    fz_rect bbox = block->bbox;
+    float width = bbox.x1 - bbox.x0;
+    float height = bbox.y1 - bbox.y0;
+
+    if (width < page_width * 0.15f || height < 20.0f)
+      continue;
+
+    float center = (bbox.x0 + bbox.x1) * 0.5f;
+
+    if (center < split)
+      left_blocks++;
+    else
+      right_blocks++;
+  }
+
+  return left_blocks >= 2 && right_blocks >= 2;
 }
 
 bool txp_renderer_page_bounds(fz_context *ctx,
