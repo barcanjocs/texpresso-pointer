@@ -283,11 +283,6 @@ static void synctex_process_line(fz_context *ctx,
       if (index != stx->page_off.len / 2 + 1 ||
           is_closing != (stx->page_off.len & 1))
       {
-        fprintf(stderr,
-                "[synctex] Invalid page index: index=%d/is_closing=%d "
-                "expected=%d/%d\n",
-                index, is_closing, stx->page_off.len / 2 + 1,
-                stx->page_off.len & 1);
         myabort();
       }
       ib_append(ctx, &stx->page_off, offset);
@@ -304,8 +299,6 @@ static void synctex_process_line(fz_context *ctx,
         break;
       if (index != stx->input_off.len + 1)
       {
-        fprintf(stderr, "[synctex] Invalid input index: index=%d expected=%d\n",
-                index, stx->input_off.len + 1);
         myabort();
       }
       ib_append(ctx, &stx->input_off, offset);
@@ -317,7 +310,6 @@ static void synctex_process_line(fz_context *ctx,
     {
       if (!(bol = string_parse_int(bol, &index)))
         break;
-      fprintf(stderr, "[synctex] Closed input: %d\n", index);
       index -= 1;
       if (index < 0 || index >= stx->input_off.len)
         myabort();
@@ -740,11 +732,6 @@ void synctex_scan(fz_context *ctx,
   {
     const char *fname;
     int len = get_input(buf, stx, c.link.tag - 1, &fname);
-    fprintf(stderr,
-            "synctex best candidate: (%d,%d)-(%d,%d) "
-            "file:%.*s line:%d column:%d\n",
-            c.rect.x0, c.rect.y0, c.rect.x1, c.rect.y1, len, fname, c.link.line,
-            c.link.column);
     editor_synctex(doc_dir, fname, len, c.link.line, c.link.column);
   }
 }
@@ -775,8 +762,6 @@ void synctex_set_target(synctex_t *stx,
   stx->target_path[length] = 0;
   stx->target_line = line;
   stx->target_column = column;
-  fprintf(stderr, "[synctex target] line=%d column=%d\n", line, column);
-  stx->target_current_page = current_page;
 
   stx->input_tag = 0;
   stx->input_found = 0;

@@ -459,11 +459,6 @@ size_t ttstub_input_seek(ttbc_input_handle_t *handle,
   if (texpresso)
   {
     txp_input *input = input_as_txp(handle);
-    fprintf(stderr,
-            "[image-seek] id=%llu offset=%zd whence=%d "
-            "before file_pos=%d buf_pos=%d buf_len=%d\n",
-            (unsigned long long)input->id, offset, whence, input->file_pos,
-            input->buf_pos, input->buf_len);
     if (input->id == -1)
       return fseek(input->file, offset, whence);
 
@@ -484,11 +479,6 @@ size_t ttstub_input_seek(ttbc_input_handle_t *handle,
       input->file_pos = ofs;
       input->buf_pos = input->buf_len = 0;
     }
-    fprintf(stderr,
-            "[image-seek] id=%llu offset=%zd whence=%d "
-            "before file_pos=%d buf_pos=%d buf_len=%d\n",
-            (unsigned long long)input->id, offset, whence, input->file_pos,
-            input->buf_pos, input->buf_len);
 
     return input->file_pos + input->buf_pos;
   }
