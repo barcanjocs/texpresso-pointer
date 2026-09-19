@@ -288,14 +288,14 @@ static void render(fz_context *ctx, ui_state *ui)
     if (right_column)
     {
       // < pointing left
-      vertices[0].position = (SDL_FPoint){screen_w - 36, cursor.y};
+      vertices[0].position = (SDL_FPoint){screen_w - 48, cursor.y};
       vertices[1].position = (SDL_FPoint){screen_w - 8, cursor.y - 16};
       vertices[2].position = (SDL_FPoint){screen_w - 8, cursor.y + 16};
     }
     else
     {
       // > pointing right
-      vertices[0].position = (SDL_FPoint){36, cursor.y};
+      vertices[0].position = (SDL_FPoint){48, cursor.y};
       vertices[1].position = (SDL_FPoint){8, cursor.y - 16};
       vertices[2].position = (SDL_FPoint){8, cursor.y + 16};
     }
