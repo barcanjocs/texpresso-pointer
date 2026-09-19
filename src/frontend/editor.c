@@ -256,20 +256,21 @@ bool editor_parse(fz_context *ctx,
   }
   else if (strcmp(verb, "synctex-forward") == 0)
   {
-    if (len != 3 && len != 4)
+    if (len != 4 && len != 5)
       goto arity;
 
     val path = val_array_get(ctx, stack, command, 1);
     val line = val_array_get(ctx, stack, command, 2);
+    val column = val_array_get(ctx, stack, command, 3);
 
-    if (!val_is_string(path) || !val_is_number(line))
+    if (!val_is_string(path) || !val_is_number(line) || !val_is_number(column))
       goto arguments;
 
     float vertical_fraction = 0.5f;
 
-    if (len == 4)
+    if (len == 5)
     {
-      val fraction = val_array_get(ctx, stack, command, 3);
+      val fraction = val_array_get(ctx, stack, command, 4);
 
       if (!val_is_number(fraction))
         goto arguments;
@@ -289,6 +290,7 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .line = val_number(ctx, line),
+                .column = val_number(ctx, column),
                 .vertical_fraction = vertical_fraction,
             },
     };

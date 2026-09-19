@@ -725,7 +725,7 @@ static void pan_to(fz_context *ctx, ui_state *ui, enum pan_to to)
 
 static void previous_page(fz_context *ctx, ui_state *ui, bool pan)
 {
-  synctex_set_target(send(synctex, ui->eng, NULL), 0, NULL, 0);
+  synctex_set_target(send(synctex, ui->eng, NULL), 0, NULL, 0, 0);
   if (ui->page > 0)
   {
     ui->page -= 1;
@@ -748,7 +748,7 @@ static void previous_page(fz_context *ctx, ui_state *ui, bool pan)
 
 static void next_page(fz_context *ctx, ui_state *ui, bool pan)
 {
-  synctex_set_target(send(synctex, ui->eng, NULL), 0, NULL, 0);
+  synctex_set_target(send(synctex, ui->eng, NULL), 0, NULL, 0, 0);
   ui->page += 1;
   // FIXME: Same remark as in previous_page.
   if (pan)
@@ -1430,8 +1430,8 @@ static void interpret_command(struct persistent_state *ps,
       else
       {
         ui->synctex_vertical_fraction = cmd.synctex_forward.vertical_fraction;
-
-        synctex_set_target(stx, ui->page, path, cmd.synctex_forward.line);
+        synctex_set_target(stx, ui->page, path, cmd.synctex_forward.line,
+                           cmd.synctex_forward.column);
         schedule_event(STDIN_EVENT);
       }
     }

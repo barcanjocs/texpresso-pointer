@@ -115,6 +115,7 @@ struct editor_command
     {
       const char *path;
       int line;
+      int column;
       float vertical_fraction;
     } synctex_forward;
     struct
